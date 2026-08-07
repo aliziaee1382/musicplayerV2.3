@@ -1,0 +1,6 @@
+{
+  "name": "0003 player",
+  "description": "A premium Glassmorphism audio player with frosted glass aesthetic, custom themes, 5-band equalizer, sleep timer, local music library, and VIP audio enhancements.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
