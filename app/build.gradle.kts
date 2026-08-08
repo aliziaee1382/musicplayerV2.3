@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.glassmorphism.audioplayer.pzxvqy"
     minSdk = 24
     targetSdk = 36
-    versionCode = 5
-    versionName = "2.7"
+    versionCode = 6
+    versionName = "2.8"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
