@@ -1,16 +1,18 @@
 package com.example.player
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Build
 import android.util.Log
-import android.os.Handler
-import android.os.Looper
+import androidx.media3.common.AudioAttributes as Media3AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.model.EqualizerPreset
 import com.example.model.GlassTheme
 import com.example.model.Track
@@ -18,7 +20,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.math.sin
 
 enum class RepeatMode {
     OFF, ALL, ONE
@@ -43,7 +44,7 @@ class AudioPlayerManager(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    private var mediaPlayer: MediaPlayer? = null
+    private var exoPlayer: ExoPlayer? = null
     private var equalizerEffect: Equalizer? = null
 
     // Audio Focus Management
@@ -58,7 +59,7 @@ class AudioPlayerManager(private val context: Context) {
                 resumeOnFocusGain = false
                 isDucked = false
                 try {
-                    mediaPlayer?.setVolume(1.0f, 1.0f)
+                    exoPlayer?.volume = 1.0f
                 } catch (_: Exception) {}
                 pause(userAction = false)
                 abandonAudioFocus()
@@ -73,7 +74,7 @@ class AudioPlayerManager(private val context: Context) {
                 if (_isPlaying.value) {
                     isDucked = true
                     try {
-                        mediaPlayer?.setVolume(0.3f, 0.3f)
+                        exoPlayer?.volume = 0.3f
                     } catch (e: Exception) {
                         Log.e("AudioPlayerManager", "Error setting volume for ducking", e)
                     }
@@ -83,7 +84,7 @@ class AudioPlayerManager(private val context: Context) {
                 if (isDucked) {
                     isDucked = false
                     try {
-                        mediaPlayer?.setVolume(1.0f, 1.0f)
+                        exoPlayer?.volume = 1.0f
                     } catch (e: Exception) {
                         Log.e("AudioPlayerManager", "Error restoring volume after ducking", e)
                     }
@@ -91,7 +92,7 @@ class AudioPlayerManager(private val context: Context) {
                 if (resumeOnFocusGain) {
                     resumeOnFocusGain = false
                     try {
-                        mediaPlayer?.setVolume(1.0f, 1.0f)
+                        exoPlayer?.volume = 1.0f
                     } catch (_: Exception) {}
                     resume()
                 }
@@ -101,9 +102,9 @@ class AudioPlayerManager(private val context: Context) {
 
     private fun requestAudioFocus(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val attr = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            val attr = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
             val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attr)
@@ -257,9 +258,59 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
+    private fun getOrCreateExoPlayer(): ExoPlayer {
+        val existing = exoPlayer
+        if (existing != null) return existing
+
+        return ExoPlayer.Builder(context)
+            .setAudioAttributes(
+                Media3AudioAttributes.Builder()
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .setUsage(C.USAGE_MEDIA)
+                    .build(),
+                /* handleAudioFocus = */ false
+            )
+            .build().also { player ->
+                player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                val dur = player.duration
+                                _durationMs.value = if (dur > 0) dur.toInt() else (_currentTrack.value?.durationSeconds?.times(1000) ?: 200000)
+                                setupEqualizer(player.audioSessionId)
+                                updateServiceNotification()
+                                triggerPlaybackStateSave()
+                            }
+                            Player.STATE_ENDED -> {
+                                handleTrackCompletion()
+                            }
+                            else -> {}
+                        }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _isPlaying.value = isPlaying
+                        updateServiceNotification()
+                        triggerPlaybackStateSave()
+                    }
+
+                    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                        setupEqualizer(audioSessionId)
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e("AudioPlayerManager", "ExoPlayer error: ${error.message}", error)
+                        _isPlaying.value = false
+                        updateServiceNotification()
+                    }
+                })
+                exoPlayer = player
+            }
+    }
+
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
         val targetTrack = tracks.getOrNull(startIndex)
-        if (targetTrack != null && _currentTrack.value?.id == targetTrack.id && mediaPlayer != null) {
+        if (targetTrack != null && _currentTrack.value?.id == targetTrack.id && exoPlayer != null) {
             playlistQueue = tracks
             currentIndex = startIndex
             if (!_isPlaying.value) {
@@ -280,7 +331,7 @@ class AudioPlayerManager(private val context: Context) {
     }
 
     fun playTrack(track: Track) {
-        if (_currentTrack.value?.id == track.id && mediaPlayer != null) {
+        if (_currentTrack.value?.id == track.id && exoPlayer != null) {
             if (!_isPlaying.value) {
                 resume()
             }
@@ -355,69 +406,49 @@ class AudioPlayerManager(private val context: Context) {
         _durationMs.value = if (track.durationSeconds > 0) track.durationSeconds * 1000 else 200000
         _currentPositionMs.value = if (startPositionMs > 0) startPositionMs else 0
 
-        stopCurrentMedia()
+        val player = getOrCreateExoPlayer()
+
+        val url = track.audioUrl
+        val uri: Uri? = when {
+            url.startsWith("content://") || url.startsWith("file://") || url.startsWith("http://") || url.startsWith("https://") -> {
+                Uri.parse(url)
+            }
+            url.startsWith("/") -> {
+                val file = java.io.File(url)
+                if (file.exists()) Uri.fromFile(file) else Uri.parse("file://$url")
+            }
+            url.isNotBlank() -> {
+                Uri.parse(url)
+            }
+            else -> null
+        }
+
+        if (uri == null) {
+            Log.e("AudioPlayerManager", "Track audio URL is empty")
+            _isPlaying.value = false
+            updateServiceNotification()
+            return
+        }
 
         try {
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
+            val mediaItem = MediaItem.fromUri(uri)
+            player.stop()
+            player.setMediaItem(mediaItem)
+            player.prepare()
 
-                val url = track.audioUrl
-                when {
-                    url.startsWith("content://") || url.startsWith("file://") || url.startsWith("http://") || url.startsWith("https://") -> {
-                        setDataSource(context, Uri.parse(url))
-                    }
-                    url.startsWith("/") -> {
-                        val file = java.io.File(url)
-                        if (file.exists()) {
-                            setDataSource(context, Uri.fromFile(file))
-                        } else {
-                            setDataSource(url)
-                        }
-                    }
-                    url.isNotBlank() -> {
-                        setDataSource(context, Uri.parse(url))
-                    }
-                    else -> {
-                        Log.e("AudioPlayerManager", "Track audio URL is empty")
-                        _isPlaying.value = false
-                        return@apply
-                    }
-                }
-
-                setOnPreparedListener { mp ->
-                    setupEqualizer(mp.audioSessionId)
-                    if (startPositionMs > 0) {
-                        try {
-                            mp.seekTo(startPositionMs)
-                        } catch (e: Exception) {
-                            Log.e("AudioPlayerManager", "Error seeking to start position", e)
-                        }
-                    }
-                    requestAudioFocus()
-                    mp.start()
-                    _isPlaying.value = true
-                    _durationMs.value = mp.duration.takeIf { it > 0 } ?: (track.durationSeconds * 1000)
-                    updateServiceNotification()
-                    triggerPlaybackStateSave()
-                }
-                setOnCompletionListener {
-                    handleTrackCompletion()
-                }
-                setOnErrorListener { _, what, extra ->
-                    Log.e("AudioPlayerManager", "MediaPlayer error: what=$what, extra=$extra")
-                    _isPlaying.value = false
-                    updateServiceNotification()
-                    true
-                }
-                prepareAsync()
+            if (startPositionMs > 0) {
+                player.seekTo(startPositionMs.toLong())
             }
+
+            requestAudioFocus()
+            player.playWhenReady = true
+            _isPlaying.value = true
+
+            setupEqualizer(player.audioSessionId)
+            updateServiceNotification()
+            triggerPlaybackStateSave()
         } catch (e: Exception) {
-            Log.e("AudioPlayerManager", "Failed to prepare MediaPlayer for track: ${track.title}", e)
+            Log.e("AudioPlayerManager", "Failed to prepare ExoPlayer for track: ${track.title}", e)
             _isPlaying.value = false
             updateServiceNotification()
         }
@@ -440,9 +471,9 @@ class AudioPlayerManager(private val context: Context) {
         flushListeningTime()
         _isPlaying.value = false
         try {
-            mediaPlayer?.pause()
+            exoPlayer?.playWhenReady = false
         } catch (e: Exception) {
-            Log.e("AudioPlayerManager", "Error pausing MediaPlayer", e)
+            Log.e("AudioPlayerManager", "Error pausing ExoPlayer", e)
         }
         updateServiceNotification()
         triggerPlaybackStateSave()
@@ -463,16 +494,16 @@ class AudioPlayerManager(private val context: Context) {
             playTrackAtIndex(0)
             return
         }
-        if (mediaPlayer == null && _currentTrack.value != null) {
+        if (exoPlayer == null && _currentTrack.value != null) {
             playTrackAtIndex(currentIndex, startPositionMs = _currentPositionMs.value)
             return
         }
         requestAudioFocus()
         try {
-            mediaPlayer?.start()
+            exoPlayer?.playWhenReady = true
             _isPlaying.value = true
         } catch (e: Exception) {
-            Log.e("AudioPlayerManager", "Error resuming MediaPlayer", e)
+            Log.e("AudioPlayerManager", "Error resuming ExoPlayer", e)
             _isPlaying.value = false
         }
         updateServiceNotification()
@@ -482,9 +513,9 @@ class AudioPlayerManager(private val context: Context) {
     fun seekTo(positionMs: Int) {
         _currentPositionMs.value = positionMs
         try {
-            mediaPlayer?.seekTo(positionMs)
+            exoPlayer?.seekTo(positionMs.toLong())
         } catch (e: Exception) {
-            Log.e("AudioPlayerManager", "Error seeking MediaPlayer", e)
+            Log.e("AudioPlayerManager", "Error seeking ExoPlayer", e)
         }
         updateServiceNotification()
         triggerPlaybackStateSave()
@@ -590,9 +621,8 @@ class AudioPlayerManager(private val context: Context) {
                 }
                 playTrackAtIndex(currentIndex)
             } else {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-                mediaPlayer = null
+                exoPlayer?.stop()
+                exoPlayer?.clearMediaItems()
                 _isPlaying.value = false
                 _currentTrack.value = null
                 clearShuffleQueue()
@@ -679,7 +709,8 @@ class AudioPlayerManager(private val context: Context) {
                         _isPlaying.value = false
                         _currentPositionMs.value = 0
                         try {
-                            mediaPlayer?.seekTo(0)
+                            exoPlayer?.seekTo(0)
+                            exoPlayer?.playWhenReady = false
                         } catch (e: Exception) {
                             Log.e("AudioPlayerManager", "Error seeking to 0 on complete", e)
                         }
@@ -789,10 +820,11 @@ class AudioPlayerManager(private val context: Context) {
             var playSecondCounter = 0
             while (isActive) {
                 delay(250L)
-                if (_isPlaying.value && mediaPlayer != null) {
+                val player = exoPlayer
+                if (_isPlaying.value && player != null) {
                     try {
-                        if (mediaPlayer?.isPlaying == true) {
-                            _currentPositionMs.value = mediaPlayer?.currentPosition ?: 0
+                        if (player.isPlaying) {
+                            _currentPositionMs.value = player.currentPosition.toInt()
                             playSecondCounter++
                             if (playSecondCounter >= 4) {
                                 playSecondCounter = 0
@@ -821,15 +853,12 @@ class AudioPlayerManager(private val context: Context) {
             Log.e("AudioPlayerManager", "Error releasing Equalizer", e)
         }
         equalizerEffect = null
-        mediaPlayer?.apply {
+        exoPlayer?.apply {
             try {
-                if (isPlaying) {
-                    stop()
-                }
-                release()
+                stop()
+                clearMediaItems()
             } catch (e: Exception) {}
         }
-        mediaPlayer = null
     }
 
     fun release() {
@@ -837,6 +866,10 @@ class AudioPlayerManager(private val context: Context) {
         progressJob?.cancel()
         sleepTimerJob?.cancel()
         stopCurrentMedia()
+        try {
+            exoPlayer?.release()
+        } catch (e: Exception) {}
+        exoPlayer = null
         instance = null
     }
 }

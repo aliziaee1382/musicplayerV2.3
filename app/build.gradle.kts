@@ -86,6 +86,8 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.session)
   implementation("androidx.media:media:1.7.0")
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
