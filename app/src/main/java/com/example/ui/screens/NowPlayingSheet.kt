@@ -113,11 +113,7 @@ fun NowPlayingSheet(
             )
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        theme.bgGradient.first().copy(alpha = 0.95f),
-                        theme.bgGradient[1].copy(alpha = 0.98f),
-                        theme.bgGradient.last()
-                    )
+                    colors = theme.bgGradient
                 )
             )
             .statusBarsPadding()
@@ -436,19 +432,18 @@ fun NowPlayingSheet(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Combined Playback Mode (Sequential -> Repeat All -> Repeat One -> Shuffle)
-                val (modeIcon, modeActive, modeDescription) = when {
-                    isShuffle -> Triple(Icons.Default.Shuffle, true, "Shuffle Play")
-                    repeatMode == RepeatMode.ONE -> Triple(Icons.Default.RepeatOne, true, "Repeat One")
-                    repeatMode == RepeatMode.ALL -> Triple(Icons.Default.Repeat, true, "Repeat All")
-                    else -> Triple(Icons.Default.Repeat, false, "Sequential Play")
+                // Combined Playback Mode (1. Sequential -> 2. Repeat Track -> 3. Shuffle)
+                val (modeIcon, modeDescription) = when {
+                    isShuffle -> Pair(Icons.Default.Shuffle, "Shuffle Play")
+                    repeatMode == RepeatMode.ONE -> Pair(Icons.Default.RepeatOne, "Repeat Track")
+                    else -> Pair(Icons.Default.FormatListNumbered, "Sequential Play")
                 }
 
                 GlassIconButton(
                     icon = modeIcon,
                     contentDescription = modeDescription,
                     onClick = onCyclePlaybackMode,
-                    isActive = modeActive,
+                    isActive = false,
                     theme = theme,
                     size = 46.dp,
                     testTag = "now_playing_playback_mode_button"

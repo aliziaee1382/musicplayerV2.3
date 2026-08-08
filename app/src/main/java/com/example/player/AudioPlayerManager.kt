@@ -161,7 +161,7 @@ class AudioPlayerManager(private val context: Context) {
     private var sleepTimerJob: Job? = null
 
     // Theme & Equalizer
-    private val _currentTheme = MutableStateFlow(GlassTheme.PurpleBlue)
+    private val _currentTheme = MutableStateFlow(GlassTheme.DarkGreen)
     val currentTheme: StateFlow<GlassTheme> = _currentTheme.asStateFlow()
 
     private val _activeEqPreset = MutableStateFlow(EqualizerPreset.Flat)
@@ -170,9 +170,11 @@ class AudioPlayerManager(private val context: Context) {
     private val _eqBandGains = MutableStateFlow(listOf(0f, 0f, 0f, 0f, 0f))
     val eqBandGains: StateFlow<List<Float>> = _eqBandGains.asStateFlow()
 
-    // Track Queue
+    // Track Queue & History
     private var playlistQueue = listOf<Track>()
     private var currentIndex = -1
+    private val playedHistory = mutableListOf<Int>()
+    private var historyPosition = -1
 
     private var progressJob: Job? = null
 
@@ -207,6 +209,19 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
+    private fun recordTrackHistory(index: Int) {
+        if (historyPosition in 0 until playedHistory.size && playedHistory[historyPosition] == index) {
+            return
+        }
+        if (historyPosition >= 0 && historyPosition < playedHistory.lastIndex) {
+            while (playedHistory.size > historyPosition + 1) {
+                playedHistory.removeAt(playedHistory.lastIndex)
+            }
+        }
+        playedHistory.add(index)
+        historyPosition = playedHistory.lastIndex
+    }
+
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
         val targetTrack = tracks.getOrNull(startIndex)
         if (targetTrack != null && _currentTrack.value?.id == targetTrack.id && mediaPlayer != null) {
@@ -218,7 +233,10 @@ class AudioPlayerManager(private val context: Context) {
             return
         }
         playlistQueue = tracks
+        playedHistory.clear()
         if (tracks.isNotEmpty() && startIndex in tracks.indices) {
+            playedHistory.add(startIndex)
+            historyPosition = 0
             playTrackAtIndex(startIndex)
         }
     }
@@ -232,9 +250,13 @@ class AudioPlayerManager(private val context: Context) {
         }
         val index = playlistQueue.indexOfFirst { it.id == track.id }
         if (index != -1) {
+            recordTrackHistory(index)
             playTrackAtIndex(index)
         } else {
             playlistQueue = listOf(track)
+            playedHistory.clear()
+            playedHistory.add(0)
+            historyPosition = 0
             playTrackAtIndex(0)
         }
     }
@@ -255,6 +277,9 @@ class AudioPlayerManager(private val context: Context) {
         if (tracks.isEmpty() || index !in tracks.indices) return
         playlistQueue = tracks
         currentIndex = index
+        playedHistory.clear()
+        playedHistory.add(index)
+        historyPosition = 0
         val track = tracks[index]
         _currentTrack.value = track
         _durationMs.value = if (track.durationSeconds > 0) track.durationSeconds * 1000 else 200000
@@ -419,12 +444,40 @@ class AudioPlayerManager(private val context: Context) {
 
     fun nextTrack() {
         if (playlistQueue.isEmpty()) return
+
+        if (historyPosition >= 0 && historyPosition < playedHistory.lastIndex) {
+            historyPosition++
+            val targetIndex = playedHistory[historyPosition]
+            playTrackAtIndex(targetIndex)
+            return
+        }
+
         if (_isShuffle.value) {
             val candidates = if (playlistQueue.size > 1) (playlistQueue.indices).filter { it != currentIndex } else playlistQueue.indices.toList()
             val randomIdx = candidates.randomOrNull() ?: 0
+
+            if (historyPosition < 0 || playedHistory.isEmpty()) {
+                playedHistory.clear()
+                if (currentIndex in playlistQueue.indices) {
+                    playedHistory.add(currentIndex)
+                }
+            }
+            playedHistory.add(randomIdx)
+            historyPosition = playedHistory.lastIndex
+
             playTrackAtIndex(randomIdx)
         } else {
             val nextIdx = (currentIndex + 1) % playlistQueue.size
+
+            if (historyPosition < 0 || playedHistory.isEmpty()) {
+                playedHistory.clear()
+                if (currentIndex in playlistQueue.indices) {
+                    playedHistory.add(currentIndex)
+                }
+            }
+            playedHistory.add(nextIdx)
+            historyPosition = playedHistory.lastIndex
+
             playTrackAtIndex(nextIdx)
         }
     }
@@ -435,8 +488,27 @@ class AudioPlayerManager(private val context: Context) {
             seekTo(0)
             return
         }
-        val prevIdx = if (currentIndex - 1 < 0) playlistQueue.size - 1 else currentIndex - 1
-        playTrackAtIndex(prevIdx)
+
+        if (historyPosition > 0 && historyPosition < playedHistory.size) {
+            historyPosition--
+            val prevIdx = playedHistory[historyPosition]
+            playTrackAtIndex(prevIdx)
+        } else {
+            if (_isShuffle.value) {
+                seekTo(0)
+            } else {
+                val prevIdx = if (currentIndex - 1 < 0) playlistQueue.size - 1 else currentIndex - 1
+                if (historyPosition < 0 || playedHistory.isEmpty()) {
+                    playedHistory.clear()
+                    if (currentIndex in playlistQueue.indices) {
+                        playedHistory.add(currentIndex)
+                    }
+                }
+                playedHistory.add(prevIdx)
+                historyPosition = playedHistory.lastIndex
+                playTrackAtIndex(prevIdx)
+            }
+        }
     }
 
     fun updateCurrentTrackFavorite(isFavorite: Boolean) {
@@ -481,6 +553,7 @@ class AudioPlayerManager(private val context: Context) {
                 if (currentIndex >= playlistQueue.size) {
                     currentIndex = 0
                 }
+                resetShuffleHistory()
                 playTrackAtIndex(currentIndex)
             } else {
                 mediaPlayer?.stop()
@@ -488,6 +561,8 @@ class AudioPlayerManager(private val context: Context) {
                 mediaPlayer = null
                 _isPlaying.value = false
                 _currentTrack.value = null
+                playedHistory.clear()
+                historyPosition = -1
             }
         } else {
             // Adjust currentIndex if necessary
@@ -495,16 +570,29 @@ class AudioPlayerManager(private val context: Context) {
             if (currentId != null) {
                 currentIndex = playlistQueue.indexOfFirst { it.id == currentId }
             }
+            resetShuffleHistory()
+        }
+    }
+
+    private fun resetShuffleHistory() {
+        playedHistory.clear()
+        if (currentIndex in playlistQueue.indices) {
+            playedHistory.add(currentIndex)
+            historyPosition = 0
+        } else {
+            historyPosition = -1
         }
     }
 
     fun setShuffle(enabled: Boolean) {
         _isShuffle.value = enabled
+        resetShuffleHistory()
         updateServiceNotification()
     }
 
     fun toggleShuffle() {
         _isShuffle.value = !_isShuffle.value
+        resetShuffleHistory()
         updateServiceNotification()
     }
 
@@ -520,17 +608,12 @@ class AudioPlayerManager(private val context: Context) {
     fun cyclePlaybackMode() {
         when {
             !_isShuffle.value && _repeatMode.value == RepeatMode.OFF -> {
-                // Sequential -> Repeat All
-                _isShuffle.value = false
-                _repeatMode.value = RepeatMode.ALL
-            }
-            !_isShuffle.value && _repeatMode.value == RepeatMode.ALL -> {
-                // Repeat All -> Repeat One
+                // Sequential -> Repeat Track
                 _isShuffle.value = false
                 _repeatMode.value = RepeatMode.ONE
             }
             !_isShuffle.value && _repeatMode.value == RepeatMode.ONE -> {
-                // Repeat One -> Shuffle
+                // Repeat Track -> Shuffle
                 _isShuffle.value = true
                 _repeatMode.value = RepeatMode.OFF
             }
@@ -540,6 +623,7 @@ class AudioPlayerManager(private val context: Context) {
                 _repeatMode.value = RepeatMode.OFF
             }
         }
+        resetShuffleHistory()
         updateServiceNotification()
     }
 

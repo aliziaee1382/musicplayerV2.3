@@ -109,7 +109,7 @@ fun GlassBackgroundContainer(
 @Composable
 fun GlassBox(
     modifier: Modifier = Modifier,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     shape: Shape = RoundedCornerShape(24.dp),
     borderWidth: Dp = 1.dp,
     contentPadding: PaddingValues = PaddingValues(16.dp),
@@ -160,7 +160,7 @@ private val GLASS_SHEEN_BRUSH = Brush.linearGradient(
 fun GlassCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     shape: Shape = RoundedCornerShape(20.dp),
     testTag: String? = null,
     content: @Composable BoxScope.() -> Unit
@@ -213,7 +213,7 @@ fun GlassButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     isHighlighted: Boolean = false,
     testTag: String? = null
 ) {
@@ -297,7 +297,7 @@ fun GlassIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     tint: Color = theme.textColor,
     isActive: Boolean = false,
     size: Dp = 48.dp,
@@ -350,7 +350,7 @@ fun GlassChip(
     text: String,
     isSelected: Boolean,
     onClick: () -> Unit,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     testTag: String? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -402,7 +402,7 @@ fun GlassArtworkCard(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     imageUrl: String? = null,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     shape: Shape = RoundedCornerShape(14.dp),
     titleText: String = "",
     subtitleText: String = ""
@@ -570,7 +570,7 @@ fun GlassSlider(
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
-    theme: GlassTheme = GlassTheme.PurpleBlue,
+    theme: GlassTheme = GlassTheme.DarkGreen,
     testTag: String? = null
 ) {
     Slider(

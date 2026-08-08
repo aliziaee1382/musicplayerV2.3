@@ -186,7 +186,7 @@ data class GlassTheme(
             glowColor = Color(0x30FB923C)
         )
 
-        val PurpleBlue = DarkPurple
+        val PurpleBlue = DarkGreen
         val NeonMidnight = DarkBlue
         val EmeraldAurora = DarkGreen
         val SunsetCrimson = DarkRed
@@ -219,7 +219,7 @@ data class GlassTheme(
 
         fun getThemeForModeAndColor(isLight: Boolean, colorKey: String): GlassTheme {
             return ALL_THEMES.find { it.isLight == isLight && it.colorKey == colorKey }
-                ?: if (isLight) LightPurple else DarkPurple
+                ?: if (isLight) LightGreen else DarkGreen
         }
     }
 }

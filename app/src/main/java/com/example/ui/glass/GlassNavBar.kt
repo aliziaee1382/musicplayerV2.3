@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,14 +50,18 @@ fun MiniPlayerBar(
     if (track == null) return
 
     val progressFloat = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val solidBg = remember(theme) {
+        if (theme.isLight) Color(0xFFF8FAFC) else theme.glassFill.copy(alpha = 1.0f)
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
+            .shadow(8.dp, RoundedCornerShape(22.dp))
             .clip(RoundedCornerShape(22.dp))
-            .background(theme.glassFill)
-            .border(1.dp, theme.glassBorder.copy(alpha = 0.5f), RoundedCornerShape(22.dp))
+            .background(solidBg)
+            .border(1.dp, theme.glassBorder.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
             .pointerInput(Unit) {
                 detectTapGestures { }
             }
@@ -159,15 +164,19 @@ fun GlassBottomNavBar(
         NavItem("Library", "Library", Icons.Default.QueueMusic),
         NavItem("Settings", "Settings", Icons.Default.Settings)
     )
+    val solidBg = remember(theme) {
+        if (theme.isLight) Color(0xFFF8FAFC) else theme.glassFill.copy(alpha = 1.0f)
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .shadow(10.dp, RoundedCornerShape(26.dp))
             .clip(RoundedCornerShape(26.dp))
-            .background(theme.glassFill)
-            .border(1.dp, theme.glassBorder.copy(alpha = 0.6f), RoundedCornerShape(26.dp))
+            .background(solidBg)
+            .border(1.dp, theme.glassBorder.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
             .pointerInput(Unit) {
                 detectTapGestures { }
             }

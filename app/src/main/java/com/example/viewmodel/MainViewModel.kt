@@ -200,7 +200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.userPreferences.collect { prefs ->
                 if (prefs != null) {
                     val theme = GlassTheme.ALL_THEMES.find { it.id == prefs.activeThemeId }
-                        ?: GlassTheme.DarkPurple
+                        ?: GlassTheme.DarkGreen
                     playerManager.setTheme(theme)
 
                     // Restore equalizer settings

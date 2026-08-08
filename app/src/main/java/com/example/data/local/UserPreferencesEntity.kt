@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "user_preferences")
 data class UserPreferencesEntity(
     @PrimaryKey val id: Int = 1,
-    val activeThemeId: String = "dark_purple",
+    val activeThemeId: String = "dark_green",
     val sortCriterion: String = "DATE_ADDED",
     val sortOrder: String = "DESCENDING",
     val lastSelectedCategory: String = "All",

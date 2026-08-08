@@ -480,7 +480,7 @@ fun ThemeSelectorDialog(
 ) {
     var currentIsAuto by remember(isAutoSystemTheme) { mutableStateOf(isAutoSystemTheme) }
     var selectedIsLight by remember(activeTheme) { mutableStateOf(activeTheme.isLight) }
-    var selectedColorKey by remember(activeTheme) { mutableStateOf(activeTheme.colorKey.ifEmpty { "purple" }) }
+    var selectedColorKey by remember(activeTheme) { mutableStateOf(activeTheme.colorKey.ifEmpty { "green" }) }
 
     AnimatedGlassDialog(onDismissRequest = onDismiss) {
         GlassBox(
